@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Calendar, Hash, ScrollText, Star, Trophy, Users } from "lucide-react";
-import { saveTournamentRegistration } from "@/app/actions/tournament-registration";
+import {
+  saveTournamentRegistration,
+} from "@/app/actions/tournament-registration";
+import { leaveTournamentBlockedReason } from "@/lib/tournament-leave-eligibility";
 import { getSessionProfile } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
 import { StartCaptainDraftForm } from "@/components/start-captain-draft-form";
@@ -10,10 +13,13 @@ import { GenerateBracketForm } from "@/components/generate-bracket-form";
 import { GenerateTeamsForm } from "@/components/generate-teams-form";
 import { RegisteredPlayersList } from "@/components/registered-players-list";
 import type { RegisteredPlayerVM } from "@/components/registered-players-list";
+import { LeaveTournamentForm } from "@/components/leave-tournament-form";
 import { TournamentRegistrationForm } from "@/components/tournament-registration-form";
 import { TournamentTeamsList, type TeamCardVM } from "@/components/tournament-teams-list";
 import { draft_state, team_formation_mode, tournament_status } from "@/generated/prisma/client";
 import { isPowerOfTwoTeamCount } from "@/lib/bracket-utils";
+import { buildLanePeerStatsForPlayer } from "@/lib/build-lane-peer-stats";
+import { role_type } from "@/generated/prisma/enums";
 
 export const dynamic = "force-dynamic";
 
@@ -76,11 +82,23 @@ export default async function TournamentDetailPage({ params }: Props) {
     orderBy: { created_at: "asc" },
   });
 
+  const peerRatings = await prisma.tournament_peer_ratings.findMany({
+    where: { tournament_id: id },
+    include: {
+      rater: { include: { profiles: true } },
+    },
+  });
+
   const players: RegisteredPlayerVM[] = registrations.map((r) => ({
     userId: r.user_id,
     nickname: r.users.profiles?.nickname ?? "Jogador",
     avatarUrl: r.users.profiles?.avatar_url ?? null,
     preferredRoles: [...(r.preferred_roles ?? [])],
+    laneStats: buildLanePeerStatsForPlayer(
+      r.user_id,
+      (r.preferred_roles ?? []) as role_type[],
+      peerRatings,
+    ),
   }));
 
   const teamCards: TeamCardVM[] = tournament.teams.map((team) => ({
@@ -118,6 +136,13 @@ export default async function TournamentDetailPage({ params }: Props) {
   const registrationInitial = {
     preferred_roles: [...(myRow?.preferred_roles ?? [])],
   };
+
+  const leaveBlockedReason = leaveTournamentBlockedReason({
+    status: tournament.status,
+    teamsCount: tournament._count.teams,
+    draftState: tournament.draft_state,
+    matchCount,
+  });
 
   return (
     <div className="space-y-8">
@@ -249,11 +274,26 @@ export default async function TournamentDetailPage({ params }: Props) {
       </div>
 
       {isPlayer ? (
-        <TournamentRegistrationForm
-          tournamentId={id}
-          action={saveTournamentRegistration}
-          initial={registrationInitial}
-        />
+        <>
+          <TournamentRegistrationForm
+            tournamentId={id}
+            action={saveTournamentRegistration}
+            initial={registrationInitial}
+          />
+          <section className="rounded-2xl border border-red-500/15 bg-red-500/[0.06] p-4">
+            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-red-200/90">
+              Inscrição
+            </h2>
+            <p className="mb-4 text-xs text-tm-muted">
+              Só pode sair antes de existirem times, de o draft começar ou de haver partidas no chaveamento.
+            </p>
+            <LeaveTournamentForm
+              tournamentId={id}
+              disabled={leaveBlockedReason !== null}
+              disabledReason={leaveBlockedReason}
+            />
+          </section>
+        </>
       ) : null}
 
       <section>

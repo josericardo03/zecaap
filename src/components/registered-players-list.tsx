@@ -1,11 +1,14 @@
 import Image from "next/image";
-import { roleLabel } from "@/lib/lanes";
+import type { LanePeerStatVM } from "@/lib/build-lane-peer-stats";
+import { PeerLaneDetailDialog } from "@/components/peer-lane-detail-dialog";
 
 export type RegisteredPlayerVM = {
   userId: string;
   nickname: string;
   avatarUrl: string | null;
   preferredRoles: string[];
+  /** Médias e votos por lane (alinhado às lanes preferidas) */
+  laneStats: LanePeerStatVM[];
 };
 
 export function RegisteredPlayersList({ players }: { players: RegisteredPlayerVM[] }) {
@@ -41,21 +44,28 @@ export function RegisteredPlayersList({ players }: { players: RegisteredPlayerVM
           </div>
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-white">{p.nickname}</p>
-            <p className="mt-1 text-xs text-tm-muted">
+            <div className="mt-1 text-xs text-tm-muted">
               Lanes no torneio (até 3):{" "}
-              <span className="text-tm-cyan">
-                {p.preferredRoles.length === 0
-                  ? "—"
-                  : p.preferredRoles.slice(0, 3).map((r, i) => (
-                      <span key={`${p.userId}-${r}-${i}`}>
-                        {i > 0 ? " · " : ""}
-                        {roleLabel(r)}
-                      </span>
-                    ))}
-              </span>
-            </p>
+              {p.laneStats.length === 0 ? (
+                <span className="text-tm-cyan">—</span>
+              ) : (
+                <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-1">
+                  {p.laneStats.map((ls, i) => (
+                    <span key={ls.role} className="inline-flex items-center">
+                      {i > 0 ? " · " : ""}
+                      <PeerLaneDetailDialog
+                        laneLabel={ls.label}
+                        avg={ls.avg}
+                        votes={ls.votes}
+                      />
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
             <p className="mt-1 text-xs text-tm-muted">
-              Notas por lane vêm das avaliações entre jogadores (não há auto-nota).
+              Notas por lane vêm das avaliações entre jogadores (não há auto-nota). Clica numa lane para
+              ver quem avaliou e quanto deu.
             </p>
           </div>
         </li>
